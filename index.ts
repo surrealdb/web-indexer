@@ -128,9 +128,6 @@ const indexPage = async (
 ) => {
   const u = new URL(url);
   const path = u.pathname;
-  // The content should contain every terms, including the title and the path.
-  content.push(title);
-  content.push(path);
   const recordId = `page:⟨${path}⟩`;
   console.log(`Indexing "${recordId}"`);
   await db.delete(recordId);
@@ -216,20 +213,20 @@ const initIndex = async (db: Surreal) => {
 
 const search = async (db: Surreal, keywords: string | undefined) => {
   const sql = `SELECT \
-  id, \
-  title, \
-  search::highlight('<b>', '</b>', 5) AS content, \
-  search::score(0) * 7 + search::score(1) * 6 + search::score(2) * 5 + search::score(3) * 4 \
-  + search::score(4) * 3 + search::score(5) * 2 + search::score(6) AS score \
-FROM page \
-WHERE title @0@ '${keywords}' \
-OR path @1@ '${keywords}' \
-OR h1 @2@ '${keywords}' \
-OR h2 @3@ '${keywords}' \
-OR h3 @4@ '${keywords}' \
-OR h4 @5@ '${keywords}' \
-OR content @6@ '${keywords}' \
-ORDER BY score DESC`;
+    id, \
+    title, \
+    search::highlight('<b>', '</b>', 6) AS content, \
+    search::score(0) * 7 + search::score(1) * 6 + search::score(2) * 5 + search::score(3) * 4 \
+    + search::score(4) * 3 + search::score(5) * 2 + search::score(6) AS score \
+  FROM page \
+  WHERE title @0@ '${keywords}' \
+    OR path @1@ '${keywords}' \
+    OR h1 @2@ '${keywords}' \
+    OR h2 @3@ '${keywords}' \
+    OR h3 @4@ '${keywords}' \
+    OR h4 @5@ '${keywords}' \
+    OR content @6@ '${keywords}' \
+  ORDER BY score DESC LIMIT 10`;
   const res = await db.query(sql);
   displayResult(res);
 };
