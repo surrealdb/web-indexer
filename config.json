@@ -1,0 +1,10 @@
+{
+    "sitemap": "sitemap.xml",
+    "surreal": {
+        "url": "http://127.0.0.1:8000/rpc",
+        "ns": "test",
+        "db": "test",
+        "user": "root",
+        "pass": "root"
+    }
+}
