@@ -131,6 +131,7 @@ const indexPage = async (
   const recordId = `page:⟨${path}⟩`;
   console.log(`Indexing "${recordId}"`);
   await db.delete(recordId);
+  const start = Date.now();
   await db.create("page", {
     id: u.pathname,
     title,
@@ -142,6 +143,8 @@ const indexPage = async (
     content,
     code,
   });
+  const elapsed = Date.now() - start;
+  console.log(`Elapsed time: ${elapsed} ms`);
 };
 
 interface Config {
@@ -188,17 +191,20 @@ const initSurreal = async (config: Config): Promise<Surreal> => {
   return db;
 };
 
-const displayResult = (res: QueryResult<RawQueryResult>[]) => {
+const execute = async (db: Surreal, sql: string) => {
+  const start = Date.now();
+  const res = await db.query(sql);
+  const elapsed = Date.now() - start;
   for (const r of res) {
     if (r.result) {
       console.log(r.result);
     }
   }
+  console.log(`Elapsed time: ${elapsed} ms`);
 };
 
 const initIndex = async (db: Surreal) => {
-  const res = await db.query(
-    "DEFINE ANALYZER simple TOKENIZERS blank,class,camel,punct FILTERS snowball(english);\
+  const sql = "DEFINE ANALYZER simple TOKENIZERS blank,class,camel,punct FILTERS snowball(english);\
   DEFINE INDEX page_title ON page FIELDS title SEARCH ANALYZER simple BM25(1.2,0.75);\
   DEFINE INDEX page_path ON page FIELDS path SEARCH ANALYZER simple BM25(1.2,0.75);\
   DEFINE INDEX page_h1 ON page FIELDS h1 SEARCH ANALYZER simple BM25(1.2,0.75);\
@@ -206,9 +212,8 @@ const initIndex = async (db: Surreal) => {
   DEFINE INDEX page_h3 ON page FIELDS h3 SEARCH ANALYZER simple BM25(1.2,0.75);\
   DEFINE INDEX page_h4 ON page FIELDS h4 SEARCH ANALYZER simple BM25(1.2,0.75);\
   DEFINE INDEX page_content ON page FIELDS content SEARCH ANALYZER simple BM25(1.2,0.75) HIGHLIGHTS;\
-  DEFINE INDEX page_code ON page FIELDS code SEARCH ANALYZER simple BM25(1.2,0.75);"
-  );
-  displayResult(res);
+  DEFINE INDEX page_code ON page FIELDS code SEARCH ANALYZER simple BM25(1.2,0.75);";
+  await execute(db, sql);
 };
 
 const search = async (db: Surreal, keywords: string | undefined) => {
@@ -227,8 +232,19 @@ const search = async (db: Surreal, keywords: string | undefined) => {
     OR h4 @5@ '${keywords}' \
     OR content @6@ '${keywords}' \
   ORDER BY score DESC LIMIT 10`;
-  const res = await db.query(sql);
-  displayResult(res);
+  await execute(db, sql);
+};
+
+const fast = async (db: Surreal, keywords: string | undefined) => {
+  const sql = `SELECT \
+    id, \
+    title, \
+    search::highlight('<b>', '</b>', 0) AS content, \
+    search::score(0) AS score \
+  FROM page \
+  WHERE content @0@ '${keywords}' \
+  ORDER BY score DESC LIMIT 10`;
+  await execute(db, sql);
 };
 
 const main = async () => {
@@ -251,6 +267,9 @@ const main = async () => {
       case "search":
         await search(db, arg);
         break;
+      case "fast":
+          await fast(db, arg);
+          break;
       default:
         console.error(`Unknown command ${cmd}`);
         break;

@@ -25,6 +25,7 @@
     "init": "ts-node index.ts init",
     "crawl": "ts-node index.ts crawl",
     "search": "ts-node index.ts search",
+    "fast": "ts-node index.ts fast",
     "format": "prettier --write \"./**/*.ts\"",
     "lint": "eslint . --ext .ts"
   },
