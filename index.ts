@@ -3,7 +3,6 @@ import axios from "axios";
 import { parseStringPromise } from "xml2js";
 import puppeteer, { Page } from "puppeteer";
 import { Surreal } from "surrealdb.js";
-import { QueryResult, RawQueryResult } from "surrealdb.js/script/types";
 
 const parseSitemap = async (db: Surreal, page: Page, sitemapPath: string) => {
   let xmlData: string;
