@@ -36,9 +36,14 @@ The sitemap can be either a path to a local file, or an url. Eg.: `https://www.s
         "db": "test",
         "user": "root",
         "pass": "root"
-    }
+    },
+    "override_host": ""
 }
 ```
+
+Altenatively, the password can be set using a system environment variable: SDB_PASS
+
+It `override_host` is not empty the crawler will subsitute the host in the URL found in the sitemap.
 
 ## Create an analyzer and a full-text index
 
