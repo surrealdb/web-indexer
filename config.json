@@ -6,5 +6,6 @@
         "db": "test",
         "user": "root",
         "pass": "root"
-    }
+    },
+    "override_host": "" 
 }

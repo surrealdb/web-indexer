@@ -4,7 +4,7 @@ import { parseStringPromise } from "xml2js";
 import puppeteer, { Page } from "puppeteer";
 import { Surreal } from "surrealdb.js";
 
-const parseSitemap = async (db: Surreal, page: Page, sitemapPath: string) => {
+const parseSitemap = async (db: Surreal, page: Page, sitemapPath: string, overrideHost: string) => {
   let xmlData: string;
   // The sitemap can be loaded from the website
   if (sitemapPath.startsWith("http")) {
@@ -19,7 +19,8 @@ const parseSitemap = async (db: Surreal, page: Page, sitemapPath: string) => {
   const urls = sitemap.urlset.url;
   console.log(`The sitemap at "${sitemapPath}" contains ${urls.length} url(s)`);
   const locs: string[] = urls.map(
-    (url: any) => url.loc[0] as unknown as string
+    (url: any) => 
+      replaceHost(url.loc[0] as unknown as string, overrideHost)
   );
   for (const [index, loc] of locs.entries()) {
     console.log(`Crawling page ${index + 1}/${locs.length}: ${loc}`);
@@ -28,8 +29,28 @@ const parseSitemap = async (db: Surreal, page: Page, sitemapPath: string) => {
   return locs.length;
 };
 
+function replaceHost(urlString: string, newHost: string) {
+  if (!newHost) {
+    return urlString;
+  }
+  const url = new URL(urlString);
+  url.host = newHost;
+  return url.toString();
+}
+
 const scrapPage = async (db: Surreal, page: Page, url: string) => {
-  await page.goto(url, { waitUntil: "networkidle2" });
+  const response = await page.goto(url, { waitUntil: "networkidle2" });
+
+  if (!response) {
+    console.warn('No response');
+    return;
+  }
+
+  const status = response.status();
+  if (status != 200) {
+    console.warn(`Unexpected status: ${status} - ${response.statusText}`);
+    return;
+  }
 
   const title = await page.title();
 
@@ -155,9 +176,11 @@ interface Config {
     user: string;
     pass: string;
   };
+  override_host: string;
 }
 
 const crawl = async (config: Config, db: Surreal) => {
+  console.log(`Crawl ${config.sitemap}`);
   let browser;
   try {
     // Start the headless browser
@@ -166,7 +189,7 @@ const crawl = async (config: Config, db: Surreal) => {
     await page.setViewport({ width: 1080, height: 1024 });
 
     // Start the crawling
-    const count = await parseSitemap(db, page, config.sitemap);
+    const count = await parseSitemap(db, page, config.sitemap, config.override_host);
     console.log(`${count} page(s) crawled`);
   } finally {
     if (browser) {
@@ -177,12 +200,20 @@ const crawl = async (config: Config, db: Surreal) => {
 
 const initSurreal = async (config: Config): Promise<Surreal> => {
   // Connect to SurrealDB instance
-  const db = new Surreal(config.surreal.url);
+  const db = new Surreal();
+
+  // Connect to the database
+  await db.connect(config.surreal.url);
+
+  const password = config.surreal.pass || process.env.SDB_PASS;
+  if (!password) {
+    throw 'The password is empty';
+  }
 
   // Signin as a namespace, database, or root user
   await db.signin({
     user: config.surreal.user,
-    pass: config.surreal.pass,
+    pass: password,
   });
 
   // Select a specific namespace / database
@@ -195,23 +226,27 @@ const execute = async (db: Surreal, sql: string) => {
   const res = await db.query(sql);
   const elapsed = Date.now() - start;
   for (const r of res) {
-    if (r.result) {
-      console.log(r.result);
+    if (r.status == 'ERR') {
+      console.error(`ERR: ${r.detail}`);
     }
+    if (r.status == 'OK') {
+      console.log(r.result);
+    } 
   }
   console.log(`Elapsed time: ${elapsed} ms`);
 };
 
 const initIndex = async (db: Surreal) => {
+  console.log('Create index');
   const sql = "DEFINE ANALYZER simple TOKENIZERS blank,class,camel,punct FILTERS snowball(english);\
-  DEFINE INDEX page_title ON page FIELDS title SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_path ON page FIELDS path SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_h1 ON page FIELDS h1 SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_h2 ON page FIELDS h2 SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_h3 ON page FIELDS h3 SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_h4 ON page FIELDS h4 SEARCH ANALYZER simple BM25(1.2,0.75);\
-  DEFINE INDEX page_content ON page FIELDS content SEARCH ANALYZER simple BM25(1.2,0.75) HIGHLIGHTS;\
-  DEFINE INDEX page_code ON page FIELDS code SEARCH ANALYZER simple BM25(1.2,0.75);";
+  DEFINE INDEX page_title ON page FIELDS title SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_path ON page FIELDS path SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_h1 ON page FIELDS h1 SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_h2 ON page FIELDS h2 SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_h3 ON page FIELDS h3 SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_h4 ON page FIELDS h4 SEARCH ANALYZER simple BM25;\
+  DEFINE INDEX page_content ON page FIELDS content SEARCH ANALYZER simple BM25 HIGHLIGHTS;\
+  DEFINE INDEX page_code ON page FIELDS code SEARCH ANALYZER simple BM25;";
   await execute(db, sql);
 };
 
@@ -247,6 +282,7 @@ const fast = async (db: Surreal, keywords: string | undefined) => {
 };
 
 const main = async () => {
+  console.log('Starting');
   const [cmd, arg] = process.argv.slice(2);
 
   try {
@@ -273,7 +309,10 @@ const main = async () => {
         console.error(`Unknown command ${cmd}`);
         break;
     }
+  } catch (err) {
+    console.error(err);
   } finally {
+    console.log('Exit');
     process.exit();
   }
 };
