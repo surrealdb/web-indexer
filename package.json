@@ -3,7 +3,7 @@
     "axios": "^1.4.0",
     "puppeteer": "^20.7.1",
     "surrealdb.js": "^0.8.0",
-    "xml2js": "^0.6.0"
+    "xml2js": "^0.6.2"
   },
   "name": "surrealdb-web-indexer",
   "description": "",
